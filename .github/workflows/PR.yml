@@ -10,8 +10,19 @@ jobs:
     container: golang:1
     timeout-minutes: 30
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@main
+        continue-on-error: true
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
 
       - name: Install SQLite
         run: apt-get update && apt-get upgrade -y && apt-get install -y tar gzip sqlite3 build-essential
@@ -22,9 +33,4 @@ jobs:
       - name: Run test
         run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
 
-      - name: Run codacy-coverage-reporter
-        uses: codacy/codacy-coverage-reporter-action@v1
-        with:
-          api-token: ${{ secrets.CODACY_API_TOKEN }}
-          force-coverage-parser: go
-          coverage-reports: coverage.out
+      - uses: codecov/codecov-action@v3
