@@ -14,24 +14,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: TruffleHog OSS
-        uses: trufflesecurity/trufflehog@main
-        continue-on-error: true
-        with:
-          path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
-          extra_args: --debug --only-verified
+        uses: actions/checkout@v4
 
       - name: Install SQLite
         run: apt-get update && apt-get upgrade -y && apt-get install -y tar gzip sqlite3 build-essential
 
       - name: Build test
-        run: go build .
+        run: go build -buildvcs=false .
 
       - name: Run test
         run: go test -v -coverprofile=coverage.out -covermode=atomic ./...

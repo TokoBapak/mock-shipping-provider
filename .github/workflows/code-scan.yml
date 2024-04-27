@@ -1,0 +1,95 @@
+# Code scanning is something you would want to do to ensure the quality of your codebase.
+# Usually, it'll detects security vulnerabilities, code smells, and other issues that might be present in your code.
+# To learn more about code scanning, see https://snyk.io/learn/code-review/code-scanning/
+name: Code Scan
+
+on:
+  # Scan changed files in PRs (diff-aware scanning):
+  pull_request: {}
+  # Scan on-demand through GitHub Actions interface:
+  workflow_dispatch: {}
+  # Scan mainline branches and report all findings:
+  push:
+    branches: ["master", "main"]
+
+jobs:
+  # Trufflehog is a tool that scans code for secrets and other sensitive information.
+  # For configuration with Github Actions, see https://github.com/trufflesecurity/trufflehog?tab=readme-ov-file#octocat-trufflehog-github-action
+  # For more information about Trufflehog, see https://trufflesecurity.com/trufflehog
+  trufflehog:
+    name: Trufflehog Secret Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --debug --only-verified
+
+  # Semgrep is a lightweight static analysis tool that can be used to scan code for security vulnerabilities.
+  # For configuration with Github Actions, see https://semgrep.dev/docs/semgrep-ci/sample-ci-configs/#github-actions
+  # For more information about Semgrep, see https://semgrep.dev/
+  semgrep:
+    name: Semgrep Code Quality Scan
+    runs-on: ubuntu-latest
+    container:
+      # A Docker image with Semgrep installed. Do not change this.
+      image: semgrep/semgrep
+    # Skip any PR created by dependabot to avoid permission issues:
+    if: (github.actor != 'dependabot[bot]')
+    steps:
+      - uses: actions/checkout@v4
+      - run: semgrep scan --config auto --oss-only --output=results.txt
+      - run: cat results.txt
+      - uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            let results = '';
+            await exec.exec('cat', ['results.txt'], {
+              listeners: {
+                stdout: (data) => {
+                  results += data.toString();
+                }
+              }
+            });
+            
+            // List previous issue comments
+            const comments = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            
+            // If there are any comments created by `github-actions[bot]`
+            // and have the body containing `semgrep`, we should update
+            // the comment, instead of creating a new one.
+            const previousComment = comments.data.find(comment => {
+              return comment.user.login === 'github-actions[bot]' && comment.body.includes('Semgrep');
+            });
+            
+            const updatedDate = new Date().toLocaleString('id-ID', {dateStyle: "long", timeStyle: "long", hour12: false, timeZone: "Asia/Jakarta"});
+            results = results.trim();
+            if (results.length > 65200) {
+              results = results.substring(0, 65200) + '...\n\nWARNING: The results are too long and have been truncated.';
+            }
+            
+            if (previousComment) {
+              await github.rest.issues.updateComment({
+                comment_id: previousComment.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `Here are the results of the [Semgrep](https://semgrep.dev/docs/getting-started/quickstart-oss/) scan (last updated: ${updatedDate}):\n\`\`\`\n${results}\n\`\`\``,
+              });
+              return;
+            }
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `Here are the results of the [Semgrep](https://semgrep.dev/docs/getting-started/quickstart-oss/) scan:\n\`\`\`\n${results}\n\`\`\``,
+            });

@@ -1,4 +1,4 @@
-FROM golang:1.19-bullseye AS builder
+FROM golang:1.22-bookworm AS builder
 
 WORKDIR /app
 
@@ -6,7 +6,7 @@ COPY . .
 
 RUN go build -o mock-shipping-provider .
 
-FROM debian:bullseye AS runtime
+FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
